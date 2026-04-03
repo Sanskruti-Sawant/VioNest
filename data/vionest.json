@@ -1,0 +1,103 @@
+{
+  "users": [
+    {
+      "id": "u1",
+      "name": "Alex",
+      "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Alex",
+      "email": "alex@example.com"
+    },
+    {
+      "id": "u2",
+      "name": "Maya",
+      "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Maya",
+      "email": "maya@example.com"
+    },
+    {
+      "id": "u3",
+      "name": "Rohan",
+      "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Rohan",
+      "email": "rohan@example.com"
+    },
+    {
+      "id": "u4",
+      "name": "Aria Stark",
+      "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Aria",
+      "email": "aria@example.com"
+    }
+  ],
+  "expenses": [
+    {
+      "id": "e1",
+      "title": "Groceries & Essentials",
+      "amount": 2400,
+      "category": "Food",
+      "paidBy": "u1",
+      "date": "2026-04-03T15:54:38.059Z",
+      "splitWith": [
+        "u1",
+        "u2",
+        "u3",
+        "u4"
+      ],
+      "splitType": "Equal",
+      "deductFromBudget": true,
+      "createdAt": "2026-04-03T17:54:38.060Z"
+    },
+    {
+      "id": "e2",
+      "title": "Electricity Bill",
+      "amount": 4120,
+      "category": "Utilities",
+      "paidBy": "u2",
+      "date": "2026-04-02T17:54:38.060Z",
+      "splitWith": [
+        "u1",
+        "u2",
+        "u3",
+        "u4"
+      ],
+      "splitType": "Equal",
+      "deductFromBudget": true,
+      "createdAt": "2026-04-03T17:54:38.060Z"
+    },
+    {
+      "id": "e3",
+      "title": "Rent Payment",
+      "amount": 12000,
+      "category": "Rent",
+      "paidBy": "u1",
+      "date": "2026-03-29T17:54:38.060Z",
+      "splitWith": [
+        "u1",
+        "u2",
+        "u3",
+        "u4"
+      ],
+      "splitType": "Equal",
+      "deductFromBudget": false,
+      "createdAt": "2026-04-03T17:54:38.060Z"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t1",
+      "title": "Deep clean the kitchen",
+      "category": "Cleaning",
+      "assignedTo": "u1",
+      "status": "Pending",
+      "dueDate": "2026-04-03T17:54:38.060Z",
+      "createdAt": "2026-04-03T17:54:38.060Z"
+    },
+    {
+      "id": "t2",
+      "title": "Restock herbal teas",
+      "category": "Groceries",
+      "assignedTo": "u2",
+      "status": "Completed",
+      "dueDate": "2026-04-03T17:54:38.060Z",
+      "completedBy": "u2",
+      "completedAt": "2026-04-03T12:54:38.060Z",
+      "createdAt": "2026-04-03T17:54:38.060Z"
+    }
+  ]
+}

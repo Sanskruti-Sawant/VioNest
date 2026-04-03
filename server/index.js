@@ -3,17 +3,23 @@ import express from 'express';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
 import { GoogleGenAI } from '@google/genai';
+import { JSONFile } from 'lowdb/node';
+import { Low } from 'lowdb';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
-const defaultDbPath = path.join(projectRoot, 'data', 'vionest.sqlite');
+const defaultDbPath = path.join(projectRoot, 'data', 'vionest.json');
 const dbPath = process.env.DATABASE_PATH || defaultDbPath;
 const dataDir = path.dirname(dbPath);
 const port = Number(process.env.PORT || 4000);
+
+const defaultData = {
+  users: [],
+  expenses: [],
+  tasks: [],
+};
 
 function nowIso() {
   return new Date().toISOString();
@@ -23,102 +29,42 @@ function createId(prefix) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function normalizeExpense(row) {
+function normalizeExpense(expense) {
   return {
-    id: row.id,
-    title: row.title,
-    amount: row.amount,
-    category: row.category,
-    paidBy: row.paid_by,
-    date: row.date,
-    splitWith: JSON.parse(row.split_with || '[]'),
-    splitType: row.split_type,
-    customSplits: row.custom_splits ? JSON.parse(row.custom_splits) : undefined,
-    deductFromBudget: Boolean(row.deduct_from_budget),
+    id: expense.id,
+    title: expense.title,
+    amount: expense.amount,
+    category: expense.category,
+    paidBy: expense.paidBy,
+    date: expense.date,
+    splitWith: expense.splitWith || [],
+    splitType: expense.splitType,
+    customSplits: expense.customSplits,
+    deductFromBudget: Boolean(expense.deductFromBudget),
   };
 }
 
-function normalizeTask(row) {
+function normalizeTask(task) {
   return {
-    id: row.id,
-    title: row.title,
-    category: row.category,
-    assignedTo: row.assigned_to,
-    status: row.status,
-    dueDate: row.due_date,
-    completedBy: row.completed_by || undefined,
-    completedAt: row.completed_at || undefined,
+    id: task.id,
+    title: task.title,
+    category: task.category,
+    assignedTo: task.assignedTo,
+    status: task.status,
+    dueDate: task.dueDate,
+    completedBy: task.completedBy,
+    completedAt: task.completedAt,
   };
 }
 
-async function bootstrapDatabase(db) {
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      avatar TEXT NOT NULL,
-      email TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS expenses (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      amount REAL NOT NULL,
-      category TEXT NOT NULL,
-      paid_by TEXT NOT NULL,
-      date TEXT NOT NULL,
-      split_with TEXT NOT NULL,
-      split_type TEXT NOT NULL,
-      custom_splits TEXT,
-      deduct_from_budget INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (paid_by) REFERENCES users(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      category TEXT NOT NULL,
-      assigned_to TEXT NOT NULL,
-      status TEXT NOT NULL,
-      due_date TEXT NOT NULL,
-      completed_by TEXT,
-      completed_at TEXT,
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (assigned_to) REFERENCES users(id),
-      FOREIGN KEY (completed_by) REFERENCES users(id)
-    );
-  `);
-
-  const userCount = await db.get('SELECT COUNT(*) AS count FROM users');
-  if (userCount?.count > 0) return;
+function ensureSeedData(data) {
+  if (data.users.length > 0) return data;
 
   const seedUsers = [
-    {
-      id: 'u1',
-      name: 'Alex',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex',
-      email: 'alex@example.com',
-    },
-    {
-      id: 'u2',
-      name: 'Maya',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Maya',
-      email: 'maya@example.com',
-    },
-    {
-      id: 'u3',
-      name: 'Rohan',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Rohan',
-      email: 'rohan@example.com',
-    },
-    {
-      id: 'u4',
-      name: 'Aria Stark',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aria',
-      email: 'aria@example.com',
-    },
+    { id: 'u1', name: 'Alex', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Alex', email: 'alex@example.com' },
+    { id: 'u2', name: 'Maya', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Maya', email: 'maya@example.com' },
+    { id: 'u3', name: 'Rohan', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Rohan', email: 'rohan@example.com' },
+    { id: 'u4', name: 'Aria Stark', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aria', email: 'aria@example.com' },
   ];
 
   const seedExpenses = [
@@ -131,7 +77,8 @@ async function bootstrapDatabase(db) {
       date: new Date(Date.now() - 2 * 3600000).toISOString(),
       splitWith: ['u1', 'u2', 'u3', 'u4'],
       splitType: 'Equal',
-      deductFromBudget: 1,
+      deductFromBudget: true,
+      createdAt: nowIso(),
     },
     {
       id: 'e2',
@@ -142,7 +89,8 @@ async function bootstrapDatabase(db) {
       date: new Date(Date.now() - 24 * 3600000).toISOString(),
       splitWith: ['u1', 'u2', 'u3', 'u4'],
       splitType: 'Equal',
-      deductFromBudget: 1,
+      deductFromBudget: true,
+      createdAt: nowIso(),
     },
     {
       id: 'e3',
@@ -153,93 +101,40 @@ async function bootstrapDatabase(db) {
       date: new Date(Date.now() - 5 * 24 * 3600000).toISOString(),
       splitWith: ['u1', 'u2', 'u3', 'u4'],
       splitType: 'Equal',
-      deductFromBudget: 0,
+      deductFromBudget: false,
+      createdAt: nowIso(),
     },
   ];
 
   const seedTasks = [
-    {
-      id: 't1',
-      title: 'Deep clean the kitchen',
-      category: 'Cleaning',
-      assignedTo: 'u1',
-      status: 'Pending',
-      dueDate: nowIso(),
-    },
-    {
-      id: 't2',
-      title: 'Restock herbal teas',
-      category: 'Groceries',
-      assignedTo: 'u2',
-      status: 'Completed',
-      dueDate: nowIso(),
-      completedBy: 'u2',
-      completedAt: new Date(Date.now() - 5 * 3600000).toISOString(),
-    },
+    { id: 't1', title: 'Deep clean the kitchen', category: 'Cleaning', assignedTo: 'u1', status: 'Pending', dueDate: nowIso(), createdAt: nowIso() },
+    { id: 't2', title: 'Restock herbal teas', category: 'Groceries', assignedTo: 'u2', status: 'Completed', dueDate: nowIso(), completedBy: 'u2', completedAt: new Date(Date.now() - 5 * 3600000).toISOString(), createdAt: nowIso() },
   ];
 
-  for (const user of seedUsers) {
-    await db.run(
-      'INSERT INTO users (id, name, avatar, email, created_at) VALUES (?, ?, ?, ?, ?)',
-      [user.id, user.name, user.avatar, user.email, nowIso()],
-    );
-  }
-
-  for (const expense of seedExpenses) {
-    await db.run(
-      `INSERT INTO expenses
-       (id, title, amount, category, paid_by, date, split_with, split_type, custom_splits, deduct_from_budget, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        expense.id,
-        expense.title,
-        expense.amount,
-        expense.category,
-        expense.paidBy,
-        expense.date,
-        JSON.stringify(expense.splitWith),
-        expense.splitType,
-        null,
-        expense.deductFromBudget,
-        nowIso(),
-      ],
-    );
-  }
-
-  for (const task of seedTasks) {
-    await db.run(
-      `INSERT INTO tasks
-       (id, title, category, assigned_to, status, due_date, completed_by, completed_at, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        task.id,
-        task.title,
-        task.category,
-        task.assignedTo,
-        task.status,
-        task.dueDate,
-        task.completedBy || null,
-        task.completedAt || null,
-        nowIso(),
-      ],
-    );
-  }
+  return {
+    users: seedUsers,
+    expenses: seedExpenses,
+    tasks: seedTasks,
+  };
 }
 
 async function createServer() {
   await mkdir(dataDir, { recursive: true });
 
-  const db = await open({
-    filename: dbPath,
-    driver: sqlite3.Database,
-  });
-
-  await bootstrapDatabase(db);
+  const adapter = new JSONFile(dbPath);
+  const db = new Low(adapter, defaultData);
+  await db.read();
+  db.data = ensureSeedData(db.data || defaultData);
+  await db.write();
 
   const app = express();
   const frontendOrigin = process.env.FRONTEND_ORIGIN;
   app.use(cors(frontendOrigin ? { origin: frontendOrigin } : undefined));
   app.use(express.json({ limit: '1mb' }));
+
+  const persist = async () => {
+    await db.write();
+  };
 
   app.get('/api/health', (_req, res) => {
     res.json({ ok: true, database: 'connected' });
@@ -252,22 +147,17 @@ async function createServer() {
         return res.status(400).json({ error: 'Email is required.' });
       }
 
-      let user = await db.get('SELECT id, name, avatar, email FROM users WHERE LOWER(email) = LOWER(?)', [email]);
+      let user = db.data.users.find((entry) => entry.email.toLowerCase() === email);
       if (!user) {
         const name = email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
-        const newUser = {
+        user = {
           id: createId('u'),
           name,
           avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(name)}`,
           email,
         };
-
-        await db.run(
-          'INSERT INTO users (id, name, avatar, email, created_at) VALUES (?, ?, ?, ?, ?)',
-          [newUser.id, newUser.name, newUser.avatar, newUser.email, nowIso()],
-        );
-
-        user = newUser;
+        db.data.users.push(user);
+        await persist();
       }
 
       return res.json({ user });
@@ -278,8 +168,7 @@ async function createServer() {
   });
 
   app.get('/api/users', async (_req, res) => {
-    const users = await db.all('SELECT id, name, avatar, email FROM users ORDER BY created_at ASC');
-    res.json({ users });
+    res.json({ users: [...db.data.users] });
   });
 
   app.post('/api/users', async (req, res) => {
@@ -293,35 +182,34 @@ async function createServer() {
         return res.status(400).json({ error: 'Name is required.' });
       }
 
-      const existing = await db.get('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [email]);
+      const existing = db.data.users.find((entry) => entry.email.toLowerCase() === email);
       if (existing) {
         return res.status(409).json({ error: 'A member with this email already exists.' });
       }
 
       const user = { id: createId('u'), name, email, avatar };
-      await db.run(
-        'INSERT INTO users (id, name, avatar, email, created_at) VALUES (?, ?, ?, ?, ?)',
-        [user.id, user.name, user.avatar, user.email, nowIso()],
-      );
+      db.data.users.push(user);
+      await persist();
 
-      res.status(201).json({ user });
+      return res.status(201).json({ user });
     } catch (error) {
       console.error('Create user error:', error);
-      res.status(500).json({ error: 'Failed to create user.' });
+      return res.status(500).json({ error: 'Failed to create user.' });
     }
   });
 
   app.get('/api/expenses', async (_req, res) => {
-    const rows = await db.all('SELECT * FROM expenses ORDER BY date DESC, created_at DESC');
-    res.json({ expenses: rows.map(normalizeExpense) });
+    const expenses = [...db.data.expenses]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map(normalizeExpense);
+    res.json({ expenses });
   });
 
   app.post('/api/expenses', async (req, res) => {
     try {
       const expense = req.body || {};
-      const id = createId('e');
       const record = {
-        id,
+        id: createId('e'),
         title: String(expense.title || '').trim(),
         amount: Number(expense.amount || 0),
         category: String(expense.category || 'Other'),
@@ -329,56 +217,30 @@ async function createServer() {
         date: String(expense.date || nowIso()),
         splitWith: Array.isArray(expense.splitWith) ? expense.splitWith : [],
         splitType: String(expense.splitType || 'Equal'),
-        customSplits: expense.customSplits || null,
-        deductFromBudget: expense.deductFromBudget ? 1 : 0,
+        customSplits: expense.customSplits || undefined,
+        deductFromBudget: Boolean(expense.deductFromBudget),
+        createdAt: nowIso(),
       };
 
       if (!record.title || !record.paidBy || !record.amount) {
         return res.status(400).json({ error: 'Title, amount and payer are required.' });
       }
 
-      await db.run(
-        `INSERT INTO expenses
-         (id, title, amount, category, paid_by, date, split_with, split_type, custom_splits, deduct_from_budget, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          record.id,
-          record.title,
-          record.amount,
-          record.category,
-          record.paidBy,
-          record.date,
-          JSON.stringify(record.splitWith),
-          record.splitType,
-          record.customSplits ? JSON.stringify(record.customSplits) : null,
-          record.deductFromBudget,
-          nowIso(),
-        ],
-      );
+      db.data.expenses.unshift(record);
+      await persist();
 
-      res.status(201).json({
-        expense: {
-          id: record.id,
-          title: record.title,
-          amount: record.amount,
-          category: record.category,
-          paidBy: record.paidBy,
-          date: record.date,
-          splitWith: record.splitWith,
-          splitType: record.splitType,
-          customSplits: record.customSplits || undefined,
-          deductFromBudget: Boolean(record.deductFromBudget),
-        },
-      });
+      return res.status(201).json({ expense: normalizeExpense(record) });
     } catch (error) {
       console.error('Create expense error:', error);
-      res.status(500).json({ error: 'Failed to create expense.' });
+      return res.status(500).json({ error: 'Failed to create expense.' });
     }
   });
 
   app.get('/api/tasks', async (_req, res) => {
-    const rows = await db.all('SELECT * FROM tasks ORDER BY due_date DESC, created_at DESC');
-    res.json({ tasks: rows.map(normalizeTask) });
+    const tasks = [...db.data.tasks]
+      .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime() || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map(normalizeTask);
+    res.json({ tasks });
   });
 
   app.post('/api/tasks', async (req, res) => {
@@ -391,42 +253,22 @@ async function createServer() {
         assignedTo: String(task.assignedTo || ''),
         status: String(task.status || 'Pending'),
         dueDate: String(task.dueDate || nowIso()),
+        completedBy: undefined,
+        completedAt: undefined,
+        createdAt: nowIso(),
       };
 
       if (!record.title || !record.assignedTo) {
         return res.status(400).json({ error: 'Title and assignee are required.' });
       }
 
-      await db.run(
-        `INSERT INTO tasks
-         (id, title, category, assigned_to, status, due_date, completed_by, completed_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          record.id,
-          record.title,
-          record.category,
-          record.assignedTo,
-          record.status,
-          record.dueDate,
-          null,
-          null,
-          nowIso(),
-        ],
-      );
+      db.data.tasks.unshift(record);
+      await persist();
 
-      res.status(201).json({
-        task: {
-          id: record.id,
-          title: record.title,
-          category: record.category,
-          assignedTo: record.assignedTo,
-          status: record.status,
-          dueDate: record.dueDate,
-        },
-      });
+      return res.status(201).json({ task: normalizeTask(record) });
     } catch (error) {
       console.error('Create task error:', error);
-      res.status(500).json({ error: 'Failed to create task.' });
+      return res.status(500).json({ error: 'Failed to create task.' });
     }
   });
 
@@ -434,23 +276,19 @@ async function createServer() {
     try {
       const { id } = req.params;
       const userId = String(req.body?.userId || '');
-      const task = await db.get('SELECT * FROM tasks WHERE id = ?', [id]);
+      const task = db.data.tasks.find((entry) => entry.id === id);
 
       if (!task) {
         return res.status(404).json({ error: 'Task not found.' });
       }
 
       const nextStatus = task.status === 'Completed' ? 'Pending' : 'Completed';
-      const completedBy = nextStatus === 'Completed' ? userId || task.assigned_to : null;
-      const completedAt = nextStatus === 'Completed' ? nowIso() : null;
+      task.status = nextStatus;
+      task.completedBy = nextStatus === 'Completed' ? userId || task.assignedTo : undefined;
+      task.completedAt = nextStatus === 'Completed' ? nowIso() : undefined;
 
-      await db.run(
-        'UPDATE tasks SET status = ?, completed_by = ?, completed_at = ? WHERE id = ?',
-        [nextStatus, completedBy, completedAt, id],
-      );
-
-      const updated = await db.get('SELECT * FROM tasks WHERE id = ?', [id]);
-      return res.json({ task: normalizeTask(updated) });
+      await persist();
+      return res.json({ task: normalizeTask(task) });
     } catch (error) {
       console.error('Toggle task error:', error);
       return res.status(500).json({ error: 'Failed to update task.' });
@@ -484,7 +322,7 @@ async function createServer() {
 
   app.listen(port, () => {
     console.log(`VioNest backend running on http://localhost:${port}`);
-    console.log(`SQLite database: ${dbPath}`);
+    console.log(`JSON database: ${dbPath}`);
   });
 }
 

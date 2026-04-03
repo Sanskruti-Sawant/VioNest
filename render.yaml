@@ -3,7 +3,7 @@ services:
     name: vionest-api
     env: node
     plan: starter
-    buildCommand: npm install && npm rebuild sqlite3 --build-from-source
+    buildCommand: npm install
     startCommand: npm run start
     disk:
       name: vionest-data
@@ -12,10 +12,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22.22.0
-      - key: npm_config_build_from_source
-        value: "true"
       - key: DATABASE_PATH
-        value: /var/data/vionest.sqlite
+        value: /var/data/vionest.json
       - key: FRONTEND_ORIGIN
         sync: false
       - key: GEMINI_API_KEY
