@@ -72,6 +72,8 @@ export default function App() {
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+  const [aiInsights, setAiInsights] = useState<string | null>(null);
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false);
 
   const currentUser = members.find(u => u.id === CURRENT_USER_ID)!;
 
@@ -90,6 +92,33 @@ export default function App() {
     const completed = tasks.filter(t => t.status === 'Completed').length;
     return Math.round((completed / tasks.length) * 100);
   }, [tasks]);
+
+  const getAIInsights = async () => {
+    setIsLoadingInsights(true);
+    try {
+      const prompt = `Analyze these expenses for a shared household: ${JSON.stringify(expenses)}. 
+      Give me 3 short, actionable tips to save money this month. 
+      Format as a short list.`;
+
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      });
+
+      const data = await response.json();
+      if (data.text) {
+        setAiInsights(data.text);
+      } else {
+        setAiInsights("Could not generate insights at this time.");
+      }
+    } catch (error) {
+      console.error("AI Insight Error:", error);
+      setAiInsights("Error connecting to AI service.");
+    } finally {
+      setIsLoadingInsights(false);
+    }
+  };
 
   const topSpender = useMemo(() => {
     const spending: Record<string, number> = {};
@@ -519,11 +548,41 @@ export default function App() {
               className="space-y-8"
             >
               <section className="space-y-2">
-                <p className="text-on-surface-variant font-medium tracking-wide uppercase text-[11px] font-headline">Monthly Summary</p>
-                <div className="flex items-baseline gap-2">
-                  <h2 className="text-5xl font-extrabold font-headline text-on-surface tracking-tighter">₹{totalHouseholdBalance.toLocaleString()}</h2>
-                  <span className="text-primary font-semibold">+12% vs last month</span>
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-on-surface-variant font-medium tracking-wide uppercase text-[11px] font-headline">Monthly Summary</p>
+                    <div className="flex items-baseline gap-2">
+                      <h2 className="text-5xl font-extrabold font-headline text-on-surface tracking-tighter">₹{totalHouseholdBalance.toLocaleString()}</h2>
+                      <span className="text-primary font-semibold">+12% vs last month</span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={getAIInsights}
+                    disabled={isLoadingInsights}
+                    className="px-4 py-2 rounded-full bg-primary/10 text-primary text-xs font-bold hover:bg-primary hover:text-on-primary transition-all flex items-center gap-2"
+                  >
+                    <Zap size={14} className={isLoadingInsights ? "animate-pulse" : ""} />
+                    {isLoadingInsights ? "ANALYZING..." : "AI INSIGHTS"}
+                  </button>
                 </div>
+                
+                {aiInsights && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="glass-panel p-4 rounded-lg border-l-4 border-primary mt-4"
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="text-[10px] font-bold text-primary uppercase tracking-widest">Gemini Analysis</p>
+                      <button onClick={() => setAiInsights(null)} className="text-on-surface-variant hover:text-on-surface">
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <div className="text-sm text-on-surface-variant whitespace-pre-line leading-relaxed">
+                      {aiInsights}
+                    </div>
+                  </motion.div>
+                )}
               </section>
 
               <div className="glass-panel rounded-xl p-6 overflow-hidden">
@@ -648,7 +707,7 @@ export default function App() {
                 </div>
                 <div className="relative h-3 w-full bg-surface-container rounded-full overflow-hidden">
                   <div 
-                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-primary to-primary-container rounded-full shadow-[0_0_15px_rgba(208,188,255,0.4)] transition-all duration-500" 
+                    className="absolute top-0 left-0 h-full bg-linear-to-r from-primary to-primary-container rounded-full shadow-[0_0_15px_rgba(208,188,255,0.4)] transition-all duration-500"
                     style={{ width: `${taskProgress}%` }}
                   ></div>
                 </div>
@@ -958,7 +1017,7 @@ function AddMemberForm({ onSubmit }: { onSubmit: (member: Omit<User, 'id'>) => v
 function Modal({ isOpen, onClose, title, children }: { isOpen: boolean, onClose: () => void, title: string, children: React.ReactNode }) {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center px-4 bg-surface/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-60 flex items-center justify-center px-4 bg-surface/40 backdrop-blur-sm">
       <motion.div 
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
