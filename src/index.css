@@ -1,0 +1,84 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-headline: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+
+  --color-primary: #d0bcff;
+  --color-primary-container: #a996d7;
+  --color-primary-dim: #c2aff1;
+  --color-on-primary: #47366f;
+  --color-on-primary-fixed: #322159;
+
+  --color-secondary: #bba2fe;
+  --color-secondary-container: #4f378a;
+  --color-on-secondary-container: #d8c8ff;
+  --color-secondary-dim: #ae95ef;
+
+  --color-tertiary: #ffd9e3;
+  --color-tertiary-container: #fec5d6;
+  --color-on-tertiary: #6f4653;
+  --color-tertiary-dim: #efb8c8;
+
+  --color-error: #ff6e84;
+  --color-error-container: #a70138;
+
+  --color-surface: #100d16;
+  --color-surface-bright: #2f2a38;
+  --color-surface-dim: #100d16;
+  --color-surface-variant: #282431;
+  --color-on-surface: #ede5f3;
+  --color-on-surface-variant: #afa9b5;
+
+  --color-surface-container-lowest: #000000;
+  --color-surface-container-low: #15121c;
+  --color-surface-container: #1c1823;
+  --color-surface-container-high: #221e2a;
+  --color-surface-container-highest: #282431;
+
+  --color-outline: #79737f;
+  --color-outline-variant: #4a4651;
+}
+
+@layer base {
+  body {
+    @apply bg-surface text-on-surface font-sans antialiased;
+    background-image: 
+      radial-gradient(circle at 20% 30%, rgba(208, 188, 255, 0.05) 0%, transparent 40%),
+      radial-gradient(circle at 80% 70%, rgba(187, 162, 254, 0.05) 0%, transparent 40%);
+    min-height: 100vh;
+  }
+}
+
+.glass-panel {
+  @apply bg-surface-variant/40 backdrop-blur-xl border border-outline-variant/10;
+}
+
+.primary-gradient {
+  background: linear-gradient(135deg, #d0bcff 0%, #a996d7 100%);
+}
+
+.primary-glow {
+  box-shadow: 0 0 20px rgba(208, 188, 255, 0.15);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom animations */
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
