@@ -138,6 +138,41 @@ VioNest integrates with the **Google Gemini API** for intelligent features. Make
 
 ---
 
+## 🚀 Production Deployment
+
+This project is deployed as two parts:
+
+1. **Frontend** on Vercel
+2. **Backend + SQLite database** on Render
+
+### Frontend on Vercel
+
+1. Import the GitHub repository into Vercel.
+2. Set the build command to `npm run build`.
+3. Set the output directory to `dist`.
+4. Add this environment variable in Vercel:
+	- `VITE_API_BASE_URL` = your Render backend URL, for example `https://vionest-api.onrender.com`
+5. Deploy the project.
+
+### Backend on Render
+
+1. Create a new Render Web Service from the same GitHub repository.
+2. Use `npm install` as the build command.
+3. Use `npm run start` as the start command.
+4. Attach a persistent disk and set `DATABASE_PATH` to `/var/data/vionest.sqlite`.
+5. Add these environment variables in Render:
+	- `GEMINI_API_KEY`
+	- `FRONTEND_ORIGIN` = your Vercel URL, for example `https://your-app.vercel.app`
+6. Deploy the service.
+
+### Notes
+
+- The SQLite database is stored on the Render disk, so household data persists across restarts.
+- The frontend talks to the backend through `VITE_API_BASE_URL`.
+- If you change the Vercel URL later, update `FRONTEND_ORIGIN` in Render.
+
+---
+
 ## 🐛 Troubleshooting
 
 ### Port 3000 Already in Use

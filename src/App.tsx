@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   LayoutDashboard, 
@@ -51,23 +51,38 @@ import {
   Category, 
   Settlement 
 } from './types';
-import { 
-  MOCK_USERS, 
-  MOCK_EXPENSES, 
-  MOCK_TASKS, 
-  CURRENT_USER_ID 
-} from './constants';
 
 import Auth from './components/Auth';
 
 type Tab = 'home' | 'expenses' | 'analysis' | 'tasks' | 'members';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+
+async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers || {}),
+    },
+  });
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.error || `Request failed with status ${response.status}`);
+  }
+
+  return response.json() as Promise<T>;
+}
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isLoadingApp, setIsLoadingApp] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('home');
-  const [expenses, setExpenses] = useState<Expense[]>(MOCK_EXPENSES);
-  const [tasks, setTasks] = useState<Task[]>(MOCK_TASKS);
-  const [members, setMembers] = useState<User[]>(MOCK_USERS);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [members, setMembers] = useState<User[]>([]);
   const [monthlyBudget, setMonthlyBudget] = useState<number>(50000);
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
@@ -75,7 +90,36 @@ export default function App() {
   const [aiInsights, setAiInsights] = useState<string | null>(null);
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
 
-  const currentUser = members.find(u => u.id === CURRENT_USER_ID)!;
+  const currentUser = useMemo(
+    () => members.find((u) => u.id === currentUserId) || members[0] || null,
+    [members, currentUserId],
+  );
+
+  const loadHouseholdData = async () => {
+    const [usersData, expensesData, tasksData] = await Promise.all([
+      apiRequest<{ users: User[] }>('/api/users'),
+      apiRequest<{ expenses: Expense[] }>('/api/expenses'),
+      apiRequest<{ tasks: Task[] }>('/api/tasks'),
+    ]);
+
+    setMembers(usersData.users);
+    setExpenses(expensesData.expenses);
+    setTasks(tasksData.tasks);
+  };
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const syncData = async () => {
+      try {
+        await loadHouseholdData();
+      } catch (error) {
+        console.error('Failed to sync household data:', error);
+      }
+    };
+
+    syncData();
+  }, [isLoggedIn]);
 
   // Calculations
   const totalHouseholdBalance = useMemo(() => {
@@ -89,6 +133,7 @@ export default function App() {
   }, [expenses]);
 
   const taskProgress = useMemo(() => {
+    if (tasks.length === 0) return 0;
     const completed = tasks.filter(t => t.status === 'Completed').length;
     return Math.round((completed / tasks.length) * 100);
   }, [tasks]);
@@ -159,41 +204,112 @@ export default function App() {
     ];
   }, []);
 
-  const handleAddExpense = (newExpense: Omit<Expense, 'id'>) => {
-    setExpenses([{ ...newExpense, id: Math.random().toString(36).substr(2, 9) }, ...expenses]);
-    setIsAddExpenseOpen(false);
+  const handleAddExpense = async (newExpense: Omit<Expense, 'id'>) => {
+    try {
+      const data = await apiRequest<{ expense: Expense }>('/api/expenses', {
+        method: 'POST',
+        body: JSON.stringify(newExpense),
+      });
+      setExpenses((prev) => [data.expense, ...prev]);
+      setIsAddExpenseOpen(false);
+    } catch (error) {
+      console.error('Failed to add expense:', error);
+      alert('Could not save expense. Please try again.');
+    }
   };
 
-  const handleAddTask = (newTask: Omit<Task, 'id'>) => {
-    setTasks([{ ...newTask, id: Math.random().toString(36).substr(2, 9) }, ...tasks]);
-    setIsAddTaskOpen(false);
+  const handleAddTask = async (newTask: Omit<Task, 'id'>) => {
+    try {
+      const data = await apiRequest<{ task: Task }>('/api/tasks', {
+        method: 'POST',
+        body: JSON.stringify(newTask),
+      });
+      setTasks((prev) => [data.task, ...prev]);
+      setIsAddTaskOpen(false);
+    } catch (error) {
+      console.error('Failed to add task:', error);
+      alert('Could not save task. Please try again.');
+    }
   };
 
-  const toggleTask = (taskId: string) => {
-    setTasks(tasks.map(t => {
-      if (t.id === taskId) {
-        return {
-          ...t,
-          status: t.status === 'Completed' ? 'Pending' : 'Completed',
-          completedBy: t.status === 'Pending' ? CURRENT_USER_ID : undefined,
-          completedAt: t.status === 'Pending' ? new Date().toISOString() : undefined
-        };
-      }
-      return t;
-    }));
+  const toggleTask = async (taskId: string) => {
+    if (!currentUserId) return;
+
+    try {
+      const data = await apiRequest<{ task: Task }>(`/api/tasks/${taskId}/toggle`, {
+        method: 'PATCH',
+        body: JSON.stringify({ userId: currentUserId }),
+      });
+
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? data.task : t)));
+    } catch (error) {
+      console.error('Failed to update task:', error);
+      alert('Could not update task. Please try again.');
+    }
   };
 
-  const handleAddMember = (newMember: Omit<User, 'id'>) => {
-    setMembers([...members, { ...newMember, id: `u${members.length + 1}` }]);
-    setIsAddMemberOpen(false);
+  const handleAddMember = async (newMember: Omit<User, 'id'>) => {
+    try {
+      const data = await apiRequest<{ user: User }>('/api/users', {
+        method: 'POST',
+        body: JSON.stringify(newMember),
+      });
+      setMembers((prev) => [...prev, data.user]);
+      setIsAddMemberOpen(false);
+    } catch (error) {
+      console.error('Failed to add member:', error);
+      alert('Could not add member. Please try again.');
+    }
+  };
+
+  const handleLogin = async (email: string) => {
+    setAuthError(null);
+    setIsLoadingApp(true);
+
+    try {
+      const data = await apiRequest<{ user: User }>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email }),
+      });
+
+      setCurrentUserId(data.user.id);
+      setIsLoggedIn(true);
+      await loadHouseholdData();
+    } catch (error) {
+      console.error('Login failed:', error);
+      setAuthError('Could not login right now. Please verify backend is running.');
+    } finally {
+      setIsLoadingApp(false);
+    }
   };
 
   const handleLogout = () => {
     setIsLoggedIn(false);
+    setCurrentUserId(null);
+    setActiveTab('home');
   };
 
   if (!isLoggedIn) {
-    return <Auth onLogin={() => setIsLoggedIn(true)} />;
+    return (
+      <>
+        <Auth onLogin={handleLogin} />
+        {(isLoadingApp || authError) && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+            <div className="glass-panel px-4 py-2 rounded-full text-xs font-semibold">
+              {isLoadingApp ? 'Signing in...' : authError}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface text-on-surface">
+        <p className="text-sm font-semibold text-on-surface-variant">Loading your household...</p>
+      </div>
+    );
   }
 
   const NavItems = () => (
@@ -482,7 +598,7 @@ export default function App() {
                   <span className="text-primary text-xs font-bold uppercase tracking-widest">Auto-Grouped</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {members.filter(u => u.id !== CURRENT_USER_ID).slice(0, 4).map((user, i) => (
+                  {members.filter(u => u.id !== currentUserId).slice(0, 4).map((user, i) => (
                     <div key={user.id} className="glass-panel p-6 rounded-lg flex items-center justify-between group hover:bg-surface-container-high transition-all">
                       <div className="flex items-center gap-4">
                         <div className="relative shrink-0">
@@ -837,7 +953,7 @@ export default function App() {
                               <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full border border-primary/20" />
                               <span className="text-sm font-medium">{user.name}</span>
                             </div>
-                            <div className={cn("w-2 h-2 rounded-full", user.id === CURRENT_USER_ID ? "bg-primary animate-pulse" : "bg-surface-container-highest")}></div>
+                            <div className={cn("w-2 h-2 rounded-full", user.id === currentUserId ? "bg-primary animate-pulse" : "bg-surface-container-highest")}></div>
                           </div>
                         ))}
                       </div>
@@ -878,7 +994,7 @@ export default function App() {
                       <p className="text-sm text-on-surface-variant truncate">{member.email}</p>
                       <div className="flex items-center gap-2 mt-2">
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold uppercase tracking-tighter">
-                          {member.id === CURRENT_USER_ID ? 'Admin' : 'Member'}
+                          {member.id === currentUserId ? 'Admin' : 'Member'}
                         </span>
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary/10 text-secondary font-bold uppercase tracking-tighter">
                           {expenses.filter(e => e.paidBy === member.id).length} Expenses
@@ -952,7 +1068,7 @@ export default function App() {
 
       {/* Add Expense Modal */}
       <Modal isOpen={isAddExpenseOpen} onClose={() => setIsAddExpenseOpen(false)} title="New Expense">
-        <AddExpenseForm members={members} onSubmit={handleAddExpense} />
+        <AddExpenseForm members={members} currentUserId={currentUserId} onSubmit={handleAddExpense} />
       </Modal>
 
       {/* Add Task Modal */}
@@ -1037,13 +1153,17 @@ function Modal({ isOpen, onClose, title, children }: { isOpen: boolean, onClose:
   );
 }
 
-function AddExpenseForm({ members, onSubmit }: { members: User[], onSubmit: (expense: Omit<Expense, 'id'>) => void }) {
+function AddExpenseForm({ members, currentUserId, onSubmit }: { members: User[], currentUserId: string | null, onSubmit: (expense: Omit<Expense, 'id'>) => void }) {
   const [amount, setAmount] = useState('');
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<Category>('Food');
-  const [paidBy, setPaidBy] = useState(CURRENT_USER_ID);
+  const [paidBy, setPaidBy] = useState(currentUserId || members[0]?.id || '');
   const [deductFromBudget, setDeductFromBudget] = useState(true);
   const [splitType, setSplitType] = useState<'Equal' | 'Custom'>('Equal');
+
+  useEffect(() => {
+    setPaidBy(currentUserId || members[0]?.id || '');
+  }, [currentUserId, members]);
 
   return (
     <form className="space-y-6" onSubmit={(e) => {

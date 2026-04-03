@@ -130,9 +130,9 @@ export default function Auth({ onLogin }: AuthProps) {
 
             {/* Social Login Divider */}
             <div className="relative flex items-center py-2">
-              <div className="flex-grow border-t border-outline-variant/30"></div>
-              <span className="flex-shrink mx-4 text-xs font-medium text-on-surface-variant uppercase tracking-widest">or continue with</span>
-              <div className="flex-grow border-t border-outline-variant/30"></div>
+              <div className="grow border-t border-outline-variant/30"></div>
+              <span className="shrink mx-4 text-xs font-medium text-on-surface-variant uppercase tracking-widest">or continue with</span>
+              <div className="grow border-t border-outline-variant/30"></div>
             </div>
 
             {/* Social Buttons */}
